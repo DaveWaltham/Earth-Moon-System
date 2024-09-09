@@ -1,10 +1,12 @@
 ##############################################################
-# Program to read a file containing k(t) (precession vs age) #
+# Read a file containing k(t) (precession vs age)            #
 # and calculate tidal-lag history required to explain it.    #
 # Program also calculates evolution of Earth-Moon parameters #
-# and associated tidal dissipation power.                    #
-#                                                            #
+# and associated tidal dissipation power.                    #                                                           #
 # Dave Waltham, Royal Holloway, March 2024                   #
+#                                                            #
+# Minor tidying up                                           #
+# Dave Waltham, Royal Holloway, September 2024               #
 #                                                            #
 # Code released under creative commons licence               #
 # https://creativecommons.org/licenses/by/4.0/               #
@@ -28,12 +30,12 @@
 #   2499	105.4546375
 #   2500	105.4737769
 
-#Input filename is hard-coded on next line
+#Hard-coded input filename
 fileIn = "kHistory.csv"
 
-#program also writes to a csv file containing all results
-#Output filename is hard-coded on next line
-fileOut = "BestGradientEvolution.csv"
+#program writes a csv file containing all results
+#Hard-coded output filename
+fileOut = "LagEvolution.csv"
 
 #Remaining code is changed at your own risk :-)
 
@@ -70,11 +72,9 @@ mu = me*mm/(me+mm)              #reduced lunar mass
 GR5k2 = G*(Re**5)*k2            #frequently used constant
 y2s = yearSid*24*3600           #seconds per sidereal year
 
-################################################################
+################### NdSL97 Functions #################################
 #Functions to implement Earth-Moon system modelling equations
 #Taken from Nero de Sugry and Laskar (1997)
-#Also appear in Laskar et al (2004) but with a typo:
-#X is defined as X=cos(obliquity) instead of X=Lcos(obliquity)
 
 #solar tide effect on Earth spin
 def dLdtSolar(X,L,tidelag):
@@ -167,9 +167,9 @@ def daedtSolar(X,tidelag):
     daedt = multiplier*( term1 - term2 )
     return daedt
 
-######################################################################
+#################     OTHER FUNCTIONS    #######################
 #calculate tidal lag that forces calculated k to match observed dk/dt
-def newDt(X,L,am,em,cosim,dAge,dkdt):
+def newDt(X,L,am,em,cosim,dkdt):
 
 #useful constants
     B = 3.0*A*ne**2/(2.0*C)
@@ -179,7 +179,7 @@ def newDt(X,L,am,em,cosim,dAge,dkdt):
     iterm = (3*cosim**2-1)
     am3 = am**3
     
-#gradients for tidelag = 1.0
+#gradients if tidelag = 1.0
     dXdt1 = dXdtSolar(X,L,1.0)
     dXdt1 += dXdtLunar(X,L,am,em,cosim,1.0)
     dcosimdt1 = dcosimdtLunar(X,L,am,em,cosim,1.0)
@@ -194,16 +194,13 @@ def newDt(X,L,am,em,cosim,dAge,dkdt):
     mEm = 3*B*X*D*iterm*em*((1-em**2)**(-5/2))/am3
     mC = 6*B*X*D*emterm*cosim/am3
     
-#alpha and beta
+#required tide lag
     alpha = mX*dXdt1 + mAm*damdtL1 + mEm*demdtL1 + mC*dcosimdt1
     beta = mAm*damdtE + mEm*demdtE
-    
-#new tide lag
-    DelT = -(dkdt+beta)/alpha           #NB dkdt is -ve but has been calculated as +ve
+    DelT = -(dkdt+beta)/alpha
     return DelT
 
-#############################################################################
-#function to calculate precession rate
+#calculate precession rate
 def kCalc(A,am,Wcoso,em,cosi):
     sini2 = 1.0 - (cosi**2)
     earthTerm = ( 1.0 - ee**2 )**-1.5
@@ -212,7 +209,6 @@ def kCalc(A,am,Wcoso,em,cosi):
     k = k*180.0*3600*y2s/math.pi                            #"/y
     return k
 
-######################################################################
 #updates for all modelled parameters
 def change(X,L,am,em,cosim,dAge,tidelag):
     
@@ -240,7 +236,6 @@ def change(X,L,am,em,cosim,dAge,tidelag):
                                     
     return DL,DX,Dcosim,Dam,Dem
 
-########################################################################
 #Energy dissipation rate in Earth's tides
 # 1. Due to lunar tides
 def dissLunar(X,L,am,em,cosim,tidelag):
@@ -259,10 +254,9 @@ def dissSolar(X,L,tidelag):
     D = 0.5*msp*ne*ae*(Omega-ne)*daedt
     return D
 
-########################################################################
-#Plot results
+#Simple plot of results
 def plot(FigNum,Ytitle,x,y):
-    plt.figure(FigNum, figsize=(6,4))
+    plt.figure(FigNum, figsize=(10,8))
     plt.plot(x,y)
     plt.xlim(age[nAge-1],0.0)
     plt.xlabel("Age (Ma)")
@@ -320,11 +314,12 @@ for iage in range(nAge-1):
     dkdt *= math.pi / ( 3600.0*180 )                #rad/y My
     dkdt /= y2s*1e6*y2s                             #rad/s2
 
-#quick dirty first guess at updated parameters
-    DelT = newDt(X,L,am,em,cosim,dAge,dkdt)
+#quick dirty first guess at updated parameters 
+#(centrally differenced in space but backward differenced in time)
+    DelT = newDt(X,L,am,em,cosim,dkdt)
     DL,DX,Dcosim,Dam,Dem = change(X,L,am,em,cosim,dAge,tidelag)
 
-#iterate to refine these using mid-point values
+#iterate to refine these using mid-point values, i.e. central differencing in both time and space
     for iter in range(10):              #10 iterations generally gives good convergence
         
 #latest mid-point estimates
@@ -336,7 +331,7 @@ for iage in range(nAge-1):
         cosiM = cosim + 0.5*Dcosim
         
 #use mid-point estimates to calculate changes
-        tidelagNew = newDt(XM,LM,amM,emM,cosiM,dAge,dkdt)
+        tidelagNew = newDt(XM,LM,amM,emM,cosiM,dkdt)
         DL,DX,Dcosim,Dam,Dem = change(XM,LM,amM,emM,cosiM,dAge,lagM)
     
 #update values for next time round time loop
@@ -363,16 +358,17 @@ for iage in range(nAge-1):
     tPowL[iage+1] = dissLunar(X,L,am,em,cosim,tidelag)
     tPowS[iage+1] = dissSolar(X,L,tidelag)
  
-#lots of plots
-plot(1,"Tidal lag (s)",age[1:]-0.5*dAge,Dt[1:])
-plot(2,"Earth-Moon distance (1000 km)",age,Am/1e6)
-plot(3,"Moon orbit eccentricity",age,Em)
-plot(4,"Moon orbit inclintion (degrees)",age,np.degrees(np.arccos(Ci)))
-plot(5,"Earth obliquity (degrees)",age,o)
-plot(6,"Day length (hours)",age,LOD)
-plot(7,"Precession rate error (sec/y)",age,kOut-kIn)
-plot(8," ",age,tPowL/1e12)
-plot(8,"Tidal dissipation (TW)",age,tPowS/1e12)
+#Once finished, do lots of plots
+plot(0,"Input Precession Rate (sec/y)",age,kIn)
+plot(1,"Tidal Lag (s)",age[1:]-0.5*dAge,Dt[1:])
+plot(2,"Earth-Moon Distance (1000 km)",age,Am/1e6)
+plot(3,"Moon Orbit Eccentricity",age,Em)
+plot(4,"Moon Orbit Inclintion (degrees)",age,np.degrees(np.arccos(Ci)))
+plot(5,"Earth Obliquity (degrees)",age,o)
+plot(6,"Day Length (hours)",age,LOD)
+plot(7,"Lunar Tidal Dissipation (TW)",age,tPowL/1e12)
+plot(8,"Solar Tidal Dissipation (TW)",age,tPowS/1e12)
+plot(9,"Model Error (%)",age,100*(kOut-kIn)/kIn)
 
 #also output to a csv file
 midAge = np.zeros_like(age)
